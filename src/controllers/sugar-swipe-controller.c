@@ -39,8 +39,8 @@ enum {
 
 struct _SugarEventData
 {
-  gdouble *x;
-  gdouble *y;
+  gdouble x;
+  gdouble y;
   guint32 time;
 };
 
@@ -98,6 +98,20 @@ sugar_swipe_controller_set_property (GObject      *object,
 static void
 sugar_swipe_controller_finalize (GObject *object)
 {
+  SugarSwipeControllerPrivate *priv = SUGAR_SWIPE_CONTROLLER (object)->priv;
+
+  if (priv->device)
+    {
+      g_object_unref (priv->device);
+      priv->device = NULL;
+    }
+
+  if (priv->event_data)
+    {
+      g_array_free (priv->event_data, TRUE);
+      priv->event_data = NULL;
+    }
+
   G_OBJECT_CLASS (sugar_swipe_controller_parent_class)->finalize (object);
 }
 
@@ -122,14 +136,18 @@ _sugar_swipe_controller_store_event (SugarSwipeController *controller,
 {
   SugarSwipeControllerPrivate *priv;
   SugarEventData data;
-  gdouble *x, *y;
+  gdouble x, y;
   guint32 time;
   guint i;
 
   priv = controller->priv;
 
-  if (!gdk_event_get_axis (event, GDK_AXIS_X, x) && !gdk_event_get_axis (event, GDK_AXIS_Y, y))
-    return;
+  if (!gdk_event_get_axis (event, GDK_AXIS_X, &x) &&
+      !gdk_event_get_axis (event, GDK_AXIS_Y, &y))
+    {
+      if (!gdk_event_get_position (event, &x, &y))
+        return;
+    }
 
   time = gdk_event_get_time (event);
 
@@ -266,7 +284,7 @@ sugar_swipe_controller_handle_event (SugarEventController *controller,
   device = gdk_event_get_device (event);
   sequence = gdk_event_get_event_sequence (event);
 
-  if (!device || !sequence)
+  if (!device)
     return FALSE;
 
   swipe = SUGAR_SWIPE_CONTROLLER (controller);
