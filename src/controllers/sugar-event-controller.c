@@ -212,7 +212,12 @@ _sugar_event_controller_widget_event (GtkEventController *event_controller,
           data->current_exclusive != item->controller)
         continue;
 
-      if (gdk_event_get_event_type (event) == GDK_GRAB_BROKEN)
+      /* In GTK4, GDK_GRAB_BROKEN no longer exists; grab releases are
+       * signalled via GDK_TOUCH_CANCEL for touch sequences, or the
+       * Wayland compositor simply stops delivering events.  Reset the
+       * controller on a touch-cancel so state machines tidy up.
+       */
+      if (gdk_event_get_event_type (event) == GDK_TOUCH_CANCEL)
         sugar_event_controller_reset (item->controller);
       else
         {

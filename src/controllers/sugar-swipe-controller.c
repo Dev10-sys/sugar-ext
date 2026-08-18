@@ -142,12 +142,12 @@ _sugar_swipe_controller_store_event (SugarSwipeController *controller,
 
   priv = controller->priv;
 
-  if (!gdk_event_get_axis (event, GDK_AXIS_X, &x) &&
-      !gdk_event_get_axis (event, GDK_AXIS_Y, &y))
-    {
-      if (!gdk_event_get_position (event, &x, &y))
-        return;
-    }
+  /* gdk_event_get_axis() was removed in GTK4; gdk_event_get_position()
+   * works for all pointer and touch event types and is the correct
+   * GTK4 API for surface-relative coordinates.
+   */
+  if (!gdk_event_get_position (event, &x, &y))
+    return;
 
   time = gdk_event_get_time (event);
 
@@ -296,6 +296,45 @@ sugar_swipe_controller_handle_event (SugarEventController *controller,
 
   switch (gdk_event_get_event_type(event))
     {
+    case GDK_BUTTON_PRESS:
+      /* Mouse drag start — treat same as touch begin */
+      priv->device = g_object_ref (device);
+      priv->sequence = NULL;
+      _sugar_swipe_controller_clear_events (swipe);
+      _sugar_swipe_controller_store_event (swipe, event);
+      g_object_notify (G_OBJECT (controller), "state");
+      break;
+    case GDK_MOTION_NOTIFY:
+      /* Mouse drag update — treat same as touch update */
+      if (!priv->device)
+        {
+          handled = FALSE;
+          break;
+        }
+      _sugar_swipe_controller_store_event (swipe, event);
+
+      if (_sugar_swipe_controller_get_event_direction (swipe, &direction))
+        {
+          priv->swiping = TRUE;
+          g_signal_emit_by_name (G_OBJECT (controller), "began");
+          g_object_notify (G_OBJECT (controller), "state");
+        }
+      break;
+    case GDK_BUTTON_RELEASE:
+      /* Mouse drag end — treat same as touch end */
+      if (!priv->device)
+        {
+          handled = FALSE;
+          break;
+        }
+      g_object_unref (priv->device);
+      priv->device = NULL;
+      priv->sequence = NULL;
+      _sugar_swipe_controller_store_event (swipe, event);
+      _sugar_swipe_controller_check_emit (swipe);
+      _sugar_swipe_controller_clear_events (swipe);
+      g_object_notify (G_OBJECT (controller), "state");
+      break;
     case GDK_TOUCH_BEGIN:
       priv->device = g_object_ref (device);
       priv->sequence = sequence;
@@ -322,6 +361,11 @@ sugar_swipe_controller_handle_event (SugarEventController *controller,
           g_signal_emit_by_name (G_OBJECT (controller), "began");
           g_object_notify (G_OBJECT (controller), "state");
         }
+      break;
+    case GDK_TOUCH_CANCEL:
+      /* Device grab was cancelled by compositor */
+      sugar_event_controller_reset (SUGAR_EVENT_CONTROLLER (swipe));
+      g_object_notify (G_OBJECT (controller), "state");
       break;
     default:
       handled = FALSE;
